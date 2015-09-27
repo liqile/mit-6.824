@@ -20,6 +20,14 @@ package paxos
 // px.Min() int -- instances before this seq have been forgotten
 //
 
+//------------------COMMETS----------------
+//1. Procedure
+//	 Phase 1 : prepare. select a majority of servers, send prepare request
+//	 Phase 2 : accept. when a majority of servers promised, send accept request
+//	 Phase 3 : decided. when a majority of servers accepted, send decided request to all
+//2. The commit point of one aggreement is all peers decided,
+//	 mainly because of unreliable net.
+//3. Progress : sleep random time when any phase failed to prevent the progress
 import "net"
 import "net/rpc"
 import "log"
