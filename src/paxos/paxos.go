@@ -297,33 +297,35 @@ func (px *Paxos) sendAccept(acceptors []string, pid int, proposal_num string, ma
 	return accepted_servers
 }
 
-func (px *Paxos) sendDecided(pid int, proposal_num string, max_value interface{}) bool {
+func (px *Paxos) sendDecided(pid int, proposal_num string, max_value interface{}) {
 	decide_args := &DecidedArgs{pid, proposal_num, max_value}
 	all_decided := false
 	min_done := math.MaxInt32
-	//for !all_decided {
-	all_decided = true
-	for i, server := range px.peers {
-		var reply DecidedReply
-		ret := false
-		if i != px.me {
-			ret = call(server, "Paxos.Decided", decide_args, &reply)
-		} else {
-			ret = px.Decided(decide_args, &reply) == nil
+	for !all_decided {
+		all_decided = true
+		for i, server := range px.peers {
+			var reply DecidedReply
+			ret := false
+			if i != px.me {
+				ret = call(server, "Paxos.Decided", decide_args, &reply)
+			} else {
+				ret = px.Decided(decide_args, &reply) == nil
+			}
+			if !ret {
+				all_decided = false
+			} else if reply.Done < min_done {
+				min_done = reply.Done
+			}
 		}
-		if !ret {
-			all_decided = false
-		} else if reply.Done < min_done {
-			min_done = reply.Done
+		if !all_decided {
+			time.Sleep(time.Duration(rand.Intn(30)) * time.Millisecond)
 		}
 	}
-	//}
-	if all_decided && min_done != InitialValue {
+	if min_done != InitialValue {
 		px.mu.Lock()
 		px.min_seq = min_done + 1
 		px.mu.Unlock()
 	}
-	return all_decided
 }
 
 //
@@ -336,7 +338,6 @@ func (px *Paxos) sendDecided(pid int, proposal_num string, max_value interface{}
 func (px *Paxos) Start(seq int, v interface{}) {
 	// Your code here.
 	go func() {
-
 		if seq < px.min_seq {
 			return
 		}
@@ -350,12 +351,8 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				accepted_servers := px.sendAccept(acceptors, seq, proposal_num, max_value)
 				//phase decided
 				if accepted_servers == px.majority_size {
-					ret := px.sendDecided(seq, proposal_num, max_value)
-					if ret {
-						break
-					} else {
-						time.Sleep(time.Duration(rand.Intn(30)) * time.Millisecond)
-					}
+					px.sendDecided(seq, proposal_num, max_value)
+					break
 				} else {
 					time.Sleep(time.Duration(rand.Intn(30)) * time.Millisecond)
 				}
