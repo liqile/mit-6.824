@@ -323,6 +323,14 @@ func (px *Paxos) sendDecided(pid int, proposal_num string, max_value interface{}
 	}
 	if min_done != InitialValue {
 		px.mu.Lock()
+		if min_done > px.done_seq {
+			for key, _ := range px.instances {
+				if key <= min_done {
+					delete(px.instances, key)
+				}
+			}
+			px.done_seq = min_done
+		}
 		px.min_seq = min_done + 1
 		px.mu.Unlock()
 	}
@@ -373,12 +381,14 @@ func (px *Paxos) Done(seq int) {
 	px.mu.Lock()
 	defer px.mu.Unlock()
 
-	for key, _ := range px.instances {
-		if key <= seq {
-			delete(px.instances, key)
+	if seq > px.done_seq {
+		for key, _ := range px.instances {
+			if key <= seq {
+				delete(px.instances, key)
+			}
 		}
+		px.done_seq = seq
 	}
-	px.done_seq = seq
 }
 
 //
@@ -439,6 +449,9 @@ func (px *Paxos) Status(seq int) (Fate, interface{}) {
 	// Your code here.
 	px.mu.Lock()
 	defer px.mu.Unlock()
+	if seq < px.min_seq {
+		return Forgotten, nil
+	}
 	if instance, ok := px.instances[seq]; ok {
 		return instance.status, instance.accepted_v
 	} else {
