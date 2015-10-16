@@ -52,6 +52,7 @@ const (
 	Decided   Fate = iota + 1
 	Pending        // not yet decided.
 	Forgotten      // decided but forgotten.
+	Empty          //Fall behind
 )
 
 const (
@@ -455,7 +456,7 @@ func (px *Paxos) Status(seq int) (Fate, interface{}) {
 	if instance, ok := px.instances[seq]; ok {
 		return instance.status, instance.accepted_v
 	} else {
-		return Forgotten, nil
+		return Empty, nil
 	}
 }
 
