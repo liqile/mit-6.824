@@ -200,7 +200,8 @@ func TestDeaf(t *testing.T) {
 	pxa[1].Start(1, "goodbye")
 	waitmajority(t, pxa, 1)
 	time.Sleep(1 * time.Second)
-	if ndecided(t, pxa, 1) != npaxos-2 {
+	if num := ndecided(t, pxa, 1); num != npaxos-2 {
+		fmt.Println(num)
 		t.Fatalf("a deaf peer heard about a decision")
 	}
 
@@ -690,8 +691,9 @@ func TestManyUnreliable(t *testing.T) {
 	for seq := 1; seq < ninst; seq++ {
 		// only 3 active instances, to limit the
 		// number of file descriptors.
-		for seq >= 3 && ndecided(t, pxa, seq-3) < npaxos {
+		for tmp := ndecided(t, pxa, seq-3); seq >= 3 && tmp < npaxos; {
 			time.Sleep(20 * time.Millisecond)
+			tmp = ndecided(t, pxa, seq-3)
 		}
 		for i := 0; i < npaxos; i++ {
 			pxa[i].Start(seq, (seq*10)+i)

@@ -50,9 +50,9 @@ type Fate int
 
 const (
 	Decided   Fate = iota + 1
-	Pending        // not yet decided.
+	Pending        // not yet decided, namely before decided.
 	Forgotten      // decided but forgotten.
-	Empty          //Fall behind
+	Empty          // fall behind
 )
 
 const (
@@ -82,9 +82,9 @@ type Paxos struct {
 	//instance status
 	instances map[int]*InstanceState
 	//min max
-	done_seq int
-	max_seq  int
-	min_seq  int
+	done_seqs []int
+	max_seq   int
+	min_seq   int
 }
 
 //
@@ -230,7 +230,7 @@ func (px *Paxos) Decided(args *DecidedArgs, reply *DecidedReply) error {
 	if args.Pid > px.max_seq {
 		px.max_seq = args.Pid
 	}
-	reply.Done = px.done_seq
+	reply.Done = px.done_seqs[px.me]
 	return nil
 }
 
@@ -302,6 +302,7 @@ func (px *Paxos) sendDecided(pid int, proposal_num string, max_value interface{}
 	decide_args := &DecidedArgs{pid, proposal_num, max_value}
 	all_decided := false
 	min_done := math.MaxInt32
+	dones := make([]int, len(px.peers))
 	for !all_decided {
 		all_decided = true
 		for i, server := range px.peers {
@@ -314,8 +315,11 @@ func (px *Paxos) sendDecided(pid int, proposal_num string, max_value interface{}
 			}
 			if !ret {
 				all_decided = false
-			} else if reply.Done < min_done {
-				min_done = reply.Done
+			} else {
+				if reply.Done < min_done {
+					min_done = reply.Done
+				}
+				dones[i] = reply.Done
 			}
 		}
 		if !all_decided {
@@ -324,13 +328,11 @@ func (px *Paxos) sendDecided(pid int, proposal_num string, max_value interface{}
 	}
 	if min_done != InitialValue {
 		px.mu.Lock()
-		if min_done > px.done_seq {
-			for key, _ := range px.instances {
-				if key <= min_done {
-					delete(px.instances, key)
-				}
+		px.done_seqs = dones
+		for key, _ := range px.instances {
+			if key <= min_done {
+				delete(px.instances, key)
 			}
-			px.done_seq = min_done
 		}
 		px.min_seq = min_done + 1
 		px.mu.Unlock()
@@ -382,14 +384,7 @@ func (px *Paxos) Done(seq int) {
 	px.mu.Lock()
 	defer px.mu.Unlock()
 
-	if seq > px.done_seq {
-		for key, _ := range px.instances {
-			if key <= seq {
-				delete(px.instances, key)
-			}
-		}
-		px.done_seq = seq
-	}
+	px.done_seqs[px.me] = seq
 }
 
 //
@@ -436,6 +431,20 @@ func (px *Paxos) Min() int {
 	// You code here.
 	px.mu.Lock()
 	defer px.mu.Unlock()
+	min_done := math.MaxInt32
+	for _, value := range px.done_seqs {
+		if value < min_done {
+			min_done = value
+		}
+	}
+	if min_done >= px.min_seq {
+		for key, _ := range px.instances {
+			if key <= min_done {
+				delete(px.instances, key)
+			}
+		}
+		px.min_seq = min_done + 1
+	}
 	return px.min_seq
 }
 
@@ -448,11 +457,12 @@ func (px *Paxos) Min() int {
 //
 func (px *Paxos) Status(seq int) (Fate, interface{}) {
 	// Your code here.
-	px.mu.Lock()
-	defer px.mu.Unlock()
-	if seq < px.min_seq {
+	min_seq := px.Min()
+	if seq < min_seq {
 		return Forgotten, nil
 	}
+	px.mu.Lock()
+	defer px.mu.Unlock()
 	if instance, ok := px.instances[seq]; ok {
 		return instance.status, instance.accepted_v
 	} else {
@@ -505,7 +515,11 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 	// Your initialization code here.
 	px.majority_size = len(peers)/2 + 1
 	px.instances = make(map[int]*InstanceState)
-	px.done_seq = InitialValue
+	peers_size := len(peers)
+	px.done_seqs = make([]int, peers_size)
+	for i := 0; i < peers_size; i++ {
+		px.done_seqs[i] = InitialValue
+	}
 	px.min_seq = 0
 	px.max_seq = InitialValue
 
