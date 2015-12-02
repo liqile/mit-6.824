@@ -50,10 +50,10 @@ type KVPaxos struct {
 }
 
 // The peer synchronize with others
-func (kv *KVPaxos) Synchronize(max_seq int, uid string) {
+func (kv *KVPaxos) Synchronize(max_seq int) {
 	for kv.cur_seq <= max_seq {
 		status, value := kv.px.Status(kv.cur_seq)
-		//if peer fall behind at seq, restart a instance to catch up
+		//if peer fall behind at seq, restart an instance to catch up
 		if status == paxos.Empty {
 			kv.startInstance(kv.cur_seq, Op{})
 			status, value = kv.px.Status(kv.cur_seq)
@@ -117,10 +117,10 @@ func (kv *KVPaxos) startInstance(seq int, value Op) interface{} {
 func (kv *KVPaxos) reachAgreement(value Op) {
 	for {
 		seq := kv.px.Max() + 1
-		kv.Synchronize(seq-1, value.Uid)
+		kv.Synchronize(seq - 1)
 		v := kv.startInstance(seq, value)
 		if v == value {
-			kv.Synchronize(seq, value.Uid)
+			kv.Synchronize(seq)
 			break
 		}
 	}
